@@ -9,3 +9,4 @@ CRYPTO-LAB-TEMPLATE*.md
 .qa-artifacts/
 BRIEF-rsa-small-roots-revised.md
 *.sage.py
+unit-tests.json

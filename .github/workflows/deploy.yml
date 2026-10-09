@@ -47,8 +47,8 @@ jobs:
       - name: Unit and known-answer tests (Vitest)
         run: |
           set -o pipefail
-          npm test | tee unit-tests.log
-          grep -Eq 'Tests[[:space:]]+[1-9][0-9]* passed' unit-tests.log
+          npm test -- --reporter=default --reporter=json --outputFile=unit-tests.json
+          node -e "const r = require('./unit-tests.json'); if (r.success !== true || !Number.isSafeInteger(r.numTotalTests) || r.numTotalTests < 1 || r.numPassedTests !== r.numTotalTests || r.numFailedTests !== 0) { throw Error('The unit suite must contain tests and every test must pass'); } console.log(r.numPassedTests + ' passing unit tests verified from the JSON report');"
 
       # NEVER --with-deps. That apt step wedged 547 CI runs across this fleet.
       - name: Install Playwright browser
