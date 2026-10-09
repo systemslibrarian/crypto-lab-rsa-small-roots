@@ -1,0 +1,27 @@
+# Group routine npm updates; leave majors separate so a breaking upgrade does
+# not hold up unrelated updates. Group Actions updates, including majors.
+# Auto-merge requires this lab's full PR gate to pass before dispatching deploy.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"

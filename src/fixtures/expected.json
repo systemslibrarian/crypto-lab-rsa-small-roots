@@ -1,0 +1,80 @@
+{
+  "message-64": {
+    "prediction": true,
+    "certificate": true,
+    "status": "verified-recovery",
+    "recovered": "8445035695436291928"
+  },
+  "message-120": {
+    "prediction": true,
+    "certificate": true,
+    "status": "verified-recovery",
+    "recovered": "1287796134241892728094676732397089261"
+  },
+  "message-126": {
+    "prediction": true,
+    "certificate": true,
+    "status": "verified-recovery",
+    "recovered": "60718116293495667704774493980652623059"
+  },
+  "message-128": {
+    "prediction": false,
+    "certificate": false,
+    "status": "verified-recovery",
+    "recovered": "300690579558420295288696393126133405756"
+  },
+  "message-136": {
+    "prediction": false,
+    "certificate": false,
+    "status": "no-verified-root-found",
+    "recovered": null
+  },
+  "message-168": {
+    "prediction": false,
+    "certificate": false,
+    "status": "no-verified-root-found",
+    "recovered": null
+  },
+  "factor-80": {
+    "prediction": true,
+    "certificate": true,
+    "status": "verified-recovery",
+    "recovered": "1015137990298975291450007"
+  },
+  "factor-96": {
+    "prediction": true,
+    "certificate": true,
+    "status": "verified-recovery",
+    "recovered": "20389549085791020006711108247"
+  },
+  "factor-100": {
+    "prediction": true,
+    "certificate": true,
+    "status": "verified-recovery",
+    "recovered": "1050355661771227408722782462615"
+  },
+  "factor-104": {
+    "prediction": false,
+    "certificate": false,
+    "status": "no-verified-root-found",
+    "recovered": null
+  },
+  "factor-112": {
+    "prediction": false,
+    "certificate": false,
+    "status": "no-verified-root-found",
+    "recovered": null
+  },
+  "factor-152": {
+    "prediction": false,
+    "certificate": false,
+    "status": "no-verified-root-found",
+    "recovered": null
+  },
+  "negative-tiny": {
+    "prediction": false,
+    "certificate": false,
+    "status": "no-verified-root-found",
+    "recovered": null
+  }
+}

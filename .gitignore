@@ -1,0 +1,11 @@
+node_modules/
+dist/
+test-results/
+playwright-report/
+chat.md
+CRYPTO-LAB-TEMPLATE*.md
+.DS_Store
+.qa-venv/
+.qa-artifacts/
+BRIEF-rsa-small-roots-revised.md
+*.sage.py
