@@ -47,7 +47,7 @@ jobs:
       - name: Unit and known-answer tests (Vitest)
         run: |
           set -o pipefail
-          npm test | tee unit-tests.log
+          FORCE_COLOR=0 npm test | tee unit-tests.log
           grep -Eq 'Tests[[:space:]]+[1-9][0-9]* passed' unit-tests.log
 
       # NEVER --with-deps. That apt step wedged 547 CI runs across this fleet.
