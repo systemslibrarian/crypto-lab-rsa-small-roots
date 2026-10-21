@@ -25,12 +25,19 @@ const mutations=[
   {name:'text contrast',file:'src/style.css',anchor:'--text-muted:#b0bbce;',replacement:'--text-muted:#343a46;',test:'WCAG A/AA production states at 1280px',mode:'browser'},
   {name:'coefficient replay',file:'src/main.ts',anchor:"after=e.type==='reduce'?before-e.multiplier!*source",replacement:"after=e.type==='reduce'?before+e.multiplier!*source",test:'reduction stepper replays actual',mode:'browser'},
   {name:'integer-root display',file:'src/main.ts',anchor:"exact(evaluate(row.h,result.recovered),'row-evaluation')",replacement:"exact(evaluate(row.h,result.recovered)+1n,'row-evaluation')",test:'selected vector certificate',mode:'browser'},
-  {name:'oracle disagreement',file:'src/main.ts',anchor:'if(!data.matches && result && result.recovered!==null)',replacement:'if(data.matches && result && result.recovered!==null)',test:'simulator integrity failure',mode:'browser'}
+  {name:'oracle disagreement',file:'src/main.ts',anchor:'if(!data.matches && result && result.recovered!==null)',replacement:'if(data.matches && result && result.recovered!==null)',test:'simulator integrity failure',mode:'browser'},
+  {name:'Wiener convergent divisibility',file:'src/wiener/attack.ts',anchor:'if (numerator % row.k !== 0n)',replacement:'if (numerator % row.d !== 0n)',test:'matches the independently long-divided toy ladder',mode:'unit',unitFile:'src/wiener/wiener.test.ts'},
+  {name:'Wiener discriminant square',file:'src/wiener/attack.ts',anchor:'const square = root * root === delta;',replacement:'const square = true;',test:'rejects nonsquare discriminants',mode:'unit',unitFile:'src/wiener/wiener.test.ts'},
+  {name:'Wiener factor product',file:'src/wiener/attack.ts',anchor:'const product = p * q === c.N;',replacement:'const product = true;',test:'public verification rejects factors',mode:'unit',unitFile:'src/wiener/wiener.test.ts'},
+  {name:'Wiener theorem inequality',file:'src/wiener/attack.ts',anchor:'return 81n * d ** 4n < N;',replacement:'return 81n * d ** 4n >= N;',test:'computes the largest strict',mode:'unit',unitFile:'src/wiener/wiener.test.ts'},
+  {name:'Wiener recovery verdict',file:'src/main.ts',anchor:"el('recovery').dataset.value=String(wienerSuccess)",replacement:"el('recovery').dataset.value=String(!wienerSuccess)",test:'Wiener recovery, sufficient boundary',mode:'browser'},
+  {name:'Wiener negative claim',file:'src/main.ts',anchor:'el(\'negative-claim\').textContent="Surviving Wiener\'s attack does not make a small private exponent safe."',replacement:"el('negative-claim').textContent=''",test:'Wiener no-recovery evidence',mode:'browser'},
+  {name:'Wiener public payload',file:'src/attacks/public.ts',anchor:"const wienerPublic={scenario:'wiener' as const,N:c.N,e:c.e};",replacement:"const wienerPublic={scenario:'wiener' as const,N:c.N,e:c.e,dPriv:1n};",test:'Wiener attack worker receives only',mode:'browser'}
 ];
 function execute(args){const r=spawnSync('npx',args,{encoding:'utf8',env:{...process.env,CI:'1'},timeout:300000,maxBuffer:8*1024*1024});return {code:r.status,output:(r.stdout??'')+(r.stderr??'')};}
 function build(){const r=spawnSync('npm',['run','build'],{encoding:'utf8',timeout:60000});if(r.status!==0)throw Error(`Build failed: ${r.stdout}\n${r.stderr}`);}
 function hash(){const h=createHash('sha256');for(const file of readdirSync('dist/assets').filter(v=>/\.(js|css)$/.test(v)).sort())h.update(file).update(readFileSync(`dist/assets/${file}`));return h.digest('hex');}
-function check(m){return execute(m.mode==='browser'?['playwright','test','--grep',m.test,'--retries=0']:['vitest','run','src/math/engine.test.ts','-t',m.test]);}
+function check(m){return execute(m.mode==='browser'?['playwright','test','--grep',m.test,'--retries=0']:['vitest','run',m.unitFile??'src/math/engine.test.ts','-t',m.test]);}
 const selected=process.argv[2]?mutations.filter(m=>m.name===process.argv[2]):mutations;
 if(!selected.length)throw Error('Unknown mutation');const records=[];mkdirSync('.qa-artifacts/mutations',{recursive:true});
 const observationsPath=process.argv[2]?`.qa-artifacts/mutations/observed-${process.argv[2].replaceAll(' ','-')}.json`:'.qa-artifacts/mutations/observed.json';

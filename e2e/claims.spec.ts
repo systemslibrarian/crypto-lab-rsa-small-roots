@@ -3,6 +3,8 @@ import { boot,run } from './gate';
 const read=async(page:Page,id:string)=>BigInt((await page.locator(`#${id}`).textContent())!.trim());
 const pow=(a:bigint,e:bigint,n:bigint)=>{let y=1n;while(e){if(e&1n)y=y*a%n;a=a*a%n;e>>=1n;}return y;};
 async function inspect(page:Page,id:string) {if(!(await page.locator(`#${id}-details`).getAttribute('open')!==null))await page.locator(`#${id}-details>summary`).click();}
+const wienerBoundary=(N:bigint)=>{let low=0n,high=1n;while(81n*high**4n<N)high*=2n;while(high-low>1n){const mid=(low+high)/2n;if(81n*mid**4n<N)low=mid;else high=mid;}return low;};
+async function chooseWiener(page:Page){await page.locator('#wiener-tab').click();await expect(page.locator('#run')).toBeEnabled({timeout:30000});await inspect(page,'challenge');}
 test('message recovery is re-encrypted from displayed public inputs and defeats confidentiality despite the round trip',async({page})=>{
   await boot(page);await inspect(page,'challenge');const N=await read(page,'public-N'),A=await read(page,'public-A'),c=await read(page,'public-c');
   expect(N.toString(2).length).toBe(512);expect(A**3n>=N).toBe(true);
@@ -87,6 +89,45 @@ test('the actual attack worker payload is public-only, and delayed stale results
   await page.evaluate(()=>(window as unknown as {replayWorkerResult:()=>void}).replayWorkerResult());
   await expect.poll(()=>page.evaluate(()=>(window as unknown as {staleResultDelivered:boolean}).staleResultDelivered)).toBe(true);
   await expect(page.locator('#reveal')).toBeHidden();await expect(page.locator('#recovery')).toHaveText('No result yet');await expect(page.locator('#app')).toHaveAttribute('data-status','idle');await expect(page.locator('#status')).toContainText('retired');
+});
+test('Wiener recovery, sufficient boundary, and RSA checks are recomputed from displayed integers',async({page})=>{
+  await boot(page);await chooseWiener(page);
+  const N=await read(page,'public-N'),e=await read(page,'public-e'),D=await read(page,'wiener-boundary'),expectedD=wienerBoundary(N);
+  expect(D).toBe(expectedD);expect(81n*D**4n<N).toBe(true);expect(81n*(D+1n)**4n>=N).toBe(true);
+  expect(await read(page,'wiener-lemma-bound')).toBe(BigInt(2*N.toString(2).length));
+  await run(page);await expect(page.locator('#reveal')).toBeVisible({timeout:30000});
+  await expect(page.locator('#recovery')).toHaveAttribute('data-value','true');await expect(page.locator('#prediction')).toHaveAttribute('data-value','true');
+  const d=await read(page,'recovered-d'),secret=await read(page,'wiener-secret-d'),p=await read(page,'wiener-p'),q=await read(page,'wiener-q'),phi=(p-1n)*(q-1n);
+  expect(d).toBe(secret);expect(p*q).toBe(N);expect(await read(page,'wiener-product')).toBe(N);expect(e*d%phi).toBe(1n);expect(await read(page,'wiener-inverse-check')).toBe(1n);
+  const message=await read(page,'wiener-message'),ciphertext=await read(page,'wiener-ciphertext'),decrypted=await read(page,'wiener-decrypted');
+  expect(pow(message,e,N)).toBe(ciphertext);expect(pow(ciphertext,d,N)).toBe(message);expect(decrypted).toBe(message);
+  await inspect(page,'wiener');await expect(page.locator('#wiener-content tbody tr')).not.toHaveCount(0);await expect(page.locator('#wiener-content .wiener-row-win')).toHaveCount(1);
+});
+test('Wiener reselect is a no-op and changing private-exponent width retires the result',async({page})=>{
+  await boot(page);await chooseWiener(page);await run(page);await expect(page.locator('#reveal')).toBeVisible({timeout:30000});
+  const N=await read(page,'public-N');await page.locator('#wiener-tab').click();await expect(page.locator('#reveal')).toBeVisible();expect(await read(page,'public-N')).toBe(N);
+  await page.locator('#width').focus();await page.keyboard.press('ArrowRight');await expect(page.locator('#reveal')).toBeHidden();await expect(page.locator('#recovery')).toHaveText('No result yet');await expect(page.locator('#recovery')).toHaveAttribute('data-value','pending');
+});
+test('Wiener attack worker receives only scenario, N, and e',async({page})=>{
+  await page.addInitScript(()=>{
+    const Real=window.Worker,records:unknown[]=[];(window as unknown as {wienerPayloads:unknown[]}).wienerPayloads=records;
+    window.Worker=class extends Real {constructor(url:string|URL,options?:WorkerOptions){super(url,options);if(String(url).includes('attack.worker')){const original=this.postMessage.bind(this);this.postMessage=(payload:unknown)=>{records.push(payload);original(payload);};}}};
+  });
+  await boot(page);await chooseWiener(page);await run(page);
+  const payload=await page.evaluate(()=>(window as unknown as {wienerPayloads:{challenge:object}[]}).wienerPayloads[0]);
+  expect(Object.keys(payload.challenge).sort()).toEqual(['N','e','scenario']);
+});
+test("Wiener no-recovery evidence keeps the negative claim visible and never presents safety",async({page})=>{
+  await boot(page);await chooseWiener(page);await page.locator('#wiener-evidence').click();await expect(page.locator('#run')).toBeEnabled({timeout:30000});await inspect(page,'challenge');
+  await expect(page.locator('#width-label')).toHaveText('258 bits');const N=await read(page,'public-N'),e=await read(page,'public-e');
+  await run(page);await expect(page.locator('#reveal')).toBeVisible({timeout:30000});
+  await expect(page.locator('#recovery')).toHaveAttribute('data-value','false');await expect(page.locator('#recovery')).toContainText('NOT A SAFETY RESULT');
+  await expect(page.locator('#reveal')).toHaveAttribute('data-outcome','not-recovered');await expect(page.locator('#reveal-eyebrow')).toContainText('AMBER');
+  await expect(page.locator('#negative-claim')).toHaveText("Surviving Wiener's attack does not make a small private exponent safe.");
+  const d=await read(page,'wiener-secret-d'),p=await read(page,'wiener-p'),q=await read(page,'wiener-q'),phi=(p-1n)*(q-1n),message=await read(page,'wiener-message'),ciphertext=await read(page,'wiener-ciphertext');
+  expect(p*q).toBe(N);expect(e*d%phi).toBe(1n);expect(pow(ciphertext,d,N)).toBe(message);expect(81n*d**4n>=N).toBe(true);expect(d**250n<N**73n).toBe(true);
+  await expect(page.locator('#boneh-durfee-check')).toHaveText('d^250 < N^73');await expect(page.locator('#certificate')).toHaveAttribute('data-value','true');
+  expect(await page.locator('#reveal').evaluate(element=>getComputedStyle(element).backgroundColor)).toBe('rgb(38, 34, 23)');
 });
 test('keyboard operation and 320px reflow keep all controls and inspectors reachable',async({page})=>{
   await page.setViewportSize({width:320,height:780});await boot(page);await page.keyboard.press('Tab');await expect(page.locator('.cl-skip-link')).toBeFocused();await page.keyboard.press('Enter');await expect(page.locator('#app')).toBeFocused();

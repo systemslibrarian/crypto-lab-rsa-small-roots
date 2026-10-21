@@ -28,7 +28,23 @@ def verify_matrix(original, reduced, transform, expected_det):
         if i: assert norms[i] >= (3/4-mu[i,i-1]**2)*norms[i-1]
 
 for fixture in data['fixtures']:
-    c = fixture['challenge']; N = ZZ(c['N']); X = ZZ(2)**c['suffixBits']
+    c = fixture['challenge']; N = ZZ(c['N'])
+    if c['scenario'] == 'wiener':
+        e = ZZ(c['e']); winner = None
+        convergent_rows = continued_fraction(QQ(e)/N).convergents()
+        for approximation in convergent_rows:
+            k, d = approximation.numerator(), approximation.denominator()
+            if k == 0 or (e*d-1) % k: continue
+            phi = (e*d-1)//k; total = N-phi+1; delta = total*total-4*N
+            if delta < 0 or not ZZ(delta).is_square(): continue
+            root = ZZ(delta).sqrt()
+            if (total+root) % 2: continue
+            p, q = (total+root)//2, (total-root)//2
+            if p*q == N: winner = int(d); break
+        observations[fixture['name']] = {'wiener': True, 'recovered': winner, 'convergents': len(convergent_rows)}
+        print(fixture['name'], 'recovered' if winner is not None else 'no convergent factors N')
+        continue
+    X = ZZ(2)**c['suffixBits']
     m = fixture['params']['m']; t = fixture['params']['t']
     if c['scenario'] == 'message':
         A = ZZ(c['prefixValue'])*X
@@ -64,12 +80,23 @@ for fixture in data['fixtures']:
 oracle = {record['name']:record for record in json.loads(Path('src/fixtures/oracle.json').read_text())}
 for name, observation in observations.items():
     truth = oracle[name]; expected = set() if truth['secret'] is None else {int(truth['secret'])}
+    if observation.get('wiener'):
+        expected_recovery = None if truth['observedRecovery'] is None else int(truth['observedRecovery'])
+        assert observation['recovered'] == expected_recovery
+        continue
     assert set(observation['roots']).issubset(expected)
     if observation['prediction']: assert set(observation['roots']) == expected
 
 for filename in sorted(Path('.qa-artifacts/math').glob('*.json')):
     if filename.name == 'observations.json': continue
     record = json.loads(filename.read_text())
+    if record['challenge']['scenario'] == 'wiener':
+        N, e = ZZ(record['challenge']['N']), ZZ(record['challenge']['e'])
+        ladder = continued_fraction(QQ(e)/N).convergents()
+        assert [(ZZ(row['k']),ZZ(row['d'])) for row in record['rows']] == [(v.numerator(),v.denominator()) for v in ladder[:len(record['rows'])]]
+        assert len(record['rows']) <= 2*N.nbits()
+        print(filename.name, 'browser continued fractions independently verified')
+        continue
     original = matrix(ZZ,record['lattice']['B']); reduced = matrix(ZZ,record['reduction']['B']); transform = matrix(ZZ,record['reduction']['U'])
     verify_matrix(original,reduced,transform,ZZ(record['lattice']['D']))
     X = ZZ(record['derived']['X'])

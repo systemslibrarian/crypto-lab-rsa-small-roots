@@ -76,5 +76,25 @@
     "certificate": false,
     "status": "no-verified-root-found",
     "recovered": null
+  },
+  "wiener-inside": {
+    "status": "verified-recovery",
+    "recovered": "2995458429559390607085906458325150058808060537844987976501706048124453"
+  },
+  "wiener-boundary": {
+    "status": "verified-recovery",
+    "recovered": "34345362196481006954720411604143143812010638513094119194209991438119900027559"
+  },
+  "wiener-above": {
+    "status": "no-verified-root-found",
+    "recovered": null
+  },
+  "wiener-far": {
+    "status": "no-verified-root-found",
+    "recovered": null
+  },
+  "wiener-65537": {
+    "status": "no-verified-root-found",
+    "recovered": null
   }
 }

@@ -106,6 +106,7 @@ describe('public-only attack acceptance',()=>{
   it('allowlists the actual public payload',()=>{
     const c={scenario:'message' as const,N:10001n,e:3 as const,prefixValue:5n,suffixBits:4,ciphertext:5n,secret:7n,p:73n,dPriv:41n};
     expect(Object.keys(allowlistChallenge(c)).sort()).toEqual(['N','ciphertext','e','prefixValue','scenario','suffixBits']);
+    expect(allowlistChallenge({scenario:'wiener',N:90581n,e:17993n,secret:5n} as Challenge)).toEqual({scenario:'wiener',N:90581n,e:17993n});
   });
   it('tiny exhaustive controls agree with verified candidates and a genuine negative challenge',()=>{
     for(const ciphertext of [powMod(160n,3n,3233n),powMod(167n,3n,3233n),powMod(900n,3n,3233n)]) {

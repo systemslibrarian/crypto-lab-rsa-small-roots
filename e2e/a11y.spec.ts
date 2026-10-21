@@ -14,5 +14,9 @@ for(const width of [1280,320])test(`WCAG A/AA production states at ${width}px`,a
   await run(page);await expect(page.locator('#reveal')).toBeVisible();await scan(page,'recovered factors alarm');
   await page.locator('#run').click();await page.locator('#cancel').click();await scan(page,'cancelled run');
   await page.locator('#budget').selectOption('1');await run(page);await scan(page,'resource limit');
+  await page.locator('#wiener-tab').click();await expect(page.locator('#run')).toBeEnabled({timeout:30000});await page.locator('#budget').selectOption('15000');await scan(page,'Wiener public challenge');
+  await run(page);await expect(page.locator('#reveal')).toBeVisible({timeout:30000});await scan(page,'Wiener recovered-key alarm');
+  await page.locator('#wiener-details>summary').click();await scan(page,'Wiener convergent ladder open');
+  await page.locator('#wiener-evidence').click();await expect(page.locator('#run')).toBeEnabled({timeout:30000});await run(page);await expect(page.locator('#reveal')).toHaveAttribute('data-outcome','not-recovered',{timeout:30000});await scan(page,'Wiener no-recovery amber evidence');
   expect(errors).toEqual([]);
 });

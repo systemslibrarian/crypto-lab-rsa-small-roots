@@ -4,13 +4,18 @@ import { reduceLLL } from '../lattice/lll';
 import { verifyReduction } from '../lattice/verify';
 import { finiteBound,certificate,type Scenario } from '../coppersmith/bounds';
 import { integerRoots } from '../coppersmith/roots';
-export type Challenge={scenario:'message';N:bigint;e:3;prefixValue:bigint;suffixBits:number;ciphertext:bigint}|{scenario:'factor';N:bigint;pHigh:bigint;suffixBits:number;model:'larger-prime'};
+import type { WienerChallenge } from '../wiener/attack';
+export type LatticeChallenge={scenario:'message';N:bigint;e:3;prefixValue:bigint;suffixBits:number;ciphertext:bigint}|{scenario:'factor';N:bigint;pHigh:bigint;suffixBits:number;model:'larger-prime'};
+export type Challenge=LatticeChallenge|WienerChallenge;
 export type Parameters={m:number;t:number};
 export function allowlistChallenge(c:Challenge):Challenge {
-  return c.scenario==='message'?{scenario:'message',N:c.N,e:c.e,prefixValue:c.prefixValue,suffixBits:c.suffixBits,ciphertext:c.ciphertext}:{scenario:'factor',N:c.N,pHigh:c.pHigh,suffixBits:c.suffixBits,model:c.model};
+  if(c.scenario==='message')return {scenario:'message',N:c.N,e:c.e,prefixValue:c.prefixValue,suffixBits:c.suffixBits,ciphertext:c.ciphertext};
+  if(c.scenario==='factor')return {scenario:'factor',N:c.N,pHigh:c.pHigh,suffixBits:c.suffixBits,model:c.model};
+  const wienerPublic={scenario:'wiener' as const,N:c.N,e:c.e};
+  return wienerPublic;
 }
 export function derive(c:Challenge,params:Parameters) {
-  if(!['message','factor'].includes(c.scenario) || typeof c.N!=='bigint')throw Error('Expected a public BigInt RSA challenge');
+  if(c.scenario==='wiener' || typeof c.N!=='bigint')throw Error('Expected a public lattice RSA challenge');
   if(!Number.isInteger(c.suffixBits) || c.suffixBits<1 || c.suffixBits>256 || c.N<3n || bitLength(c.N)>1024) throw Error('Supported range: modulus ≤1024 bits; unknown width 1–256 bits');
   const X=2n**BigInt(c.suffixBits),r=c.scenario==='message'?3:1;
   if(!Number.isInteger(params.m)|| !Number.isInteger(params.t)|| params.m<1 || params.t<1 || r*params.m+params.t>12) throw Error('Lattice dimension must be 2–12; m and t must be positive integers');
@@ -27,12 +32,14 @@ export function derive(c:Challenge,params:Parameters) {
   return {X,r,f,A,bound:finiteBound(c.N,r,params.m,params.t,c.scenario,X)};
 }
 export function verifyCandidate(c:Challenge,x:bigint):boolean {
+  if(c.scenario==='wiener')return false;
   const X=2n**BigInt(c.suffixBits);if(x<0n || x>=X) return false;
   if(c.scenario==='message') {const M=c.prefixValue*X+x;return M>=0n && M<c.N && powMod(M,3n,c.N)===c.ciphertext;}
   const p=c.pHigh+x;return c.model==='larger-prime' && p>1n && p<c.N && c.N%p===0n && p*p>=c.N && p/X*X===c.pHigh;
 }
 export function attack(challenge:Challenge,params:Parameters,budget=new Budget(),progress=(stage:string)=>{}) {
   const c=allowlistChallenge(challenge),start=performance.now();progress('Constructing the scaled integer lattice');
+  if(c.scenario==='wiener')throw Error('Wiener challenges use the continued-fraction attack entry point');
   const derived=derive(c,params),lattice=buildBasis(derived.f,c.N,derived.X,params.m,params.t);
   budget.check('basis construction',lattice.B.flat());progress('Reducing with exact LLL');const reduction=reduceLLL(lattice.B,budget);
   progress('Independently verifying the lattice');budget.check('lattice verification');

@@ -3,13 +3,23 @@ import { mkdirSync,writeFileSync,readFileSync } from 'node:fs';
 import { Worker } from 'node:worker_threads';
 import { fileURLToPath } from 'node:url';
 import { attack,verifyCandidate,type Challenge } from '../attacks/public';
+import { verifyWiener,wienerAttack } from '../wiener/attack';
 import publicData from './public.json';
 import oracle from './oracle.json';
 import expected from './expected.json';
-const decode=(input:Record<string,unknown>):Challenge=>Object.fromEntries(Object.entries(input).map(([k,v])=>[k,['N','ciphertext','prefixValue','pHigh'].includes(k)?BigInt(v as string):v])) as Challenge;
+const decode=(input:Record<string,unknown>):Challenge=>Object.fromEntries(Object.entries(input).map(([k,v])=>[k,['N','ciphertext','prefixValue','pHigh'].includes(k)||(k==='e'&&typeof v==='string')?BigInt(v as string):v])) as Challenge;
 const observations:Record<string,unknown>={};
 for(const fixture of publicData.fixtures)it(`independent fixture ${fixture.name}`,()=>{
-  const c=decode(fixture.challenge),result=attack(c,fixture.params),truth=oracle.find(v=>v.name===fixture.name)!;
+  const c=decode(fixture.challenge),truth=oracle.find(v=>v.name===fixture.name)!;
+  if(c.scenario==='wiener') {
+    const result=wienerAttack(c),observation={status:result.status,recovered:result.recovered?.d.toString()??null,testedCount:result.testedCount};observations[fixture.name]=observation;
+    expect({status:observation.status,recovered:observation.recovered}).toEqual((expected as Record<string,unknown>)[fixture.name]);
+    expect(result.testedCount).toBeLessThanOrEqual(result.lemmaBound);
+    const observed=(truth as typeof truth&{observedRecovery?:string|null}).observedRecovery??null;expect(observation.recovered).toBe(observed);
+    if(result.recovered){expect(result.recovered.d).toBe(BigInt(truth.secret!));expect(verifyWiener(c,result.recovered.d,result.recovered.p,result.recovered.q).valid).toBe(true);}
+    mkdirSync('.qa-artifacts/math',{recursive:true});writeFileSync(`.qa-artifacts/math/${fixture.name}.json`,JSON.stringify(result,(_,v)=>typeof v==='bigint'?v.toString():v));writeFileSync('.qa-artifacts/math/observations.json',JSON.stringify(observations,null,2));return;
+  }
+  const result=attack(c,fixture.params);
   const observation={prediction:result.derived.bound.satisfied,certificate:result.rows[0].certificate.satisfied,status:result.status,recovered:result.recovered?.toString()??null,runtimeMs:result.runtimeMs};observations[fixture.name]=observation;
   expect({prediction:observation.prediction,certificate:observation.certificate,status:observation.status,recovered:observation.recovered}).toEqual(expected[fixture.name as keyof typeof expected]);
   if(truth.secret===null)expect(result.recovered).toBe(null);

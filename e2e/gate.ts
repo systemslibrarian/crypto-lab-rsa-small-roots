@@ -9,7 +9,7 @@ export async function boot(page:Page) {
   await expect(page.locator('#run')).toBeEnabled({timeout:30000});
   await expect(page.locator('main')).toHaveCount(1);await expect(page.locator('h1')).toHaveCount(1);
   await expect(page.locator('[role=banner]')).toHaveCount(1);
-  await expect(page.locator('.scenario-switch button')).toHaveCount(2);
+  await expect(page.locator('.scenario-switch button')).toHaveCount(3);
   await expect(page.locator('.scenario-switch [aria-pressed=true]')).toHaveCount(1);
   await expect(page.locator('#reveal')).toBeHidden();await expect(page.locator('details[open]')).toHaveCount(0);
   await expect(page.locator('.cl-skip-link')).toHaveAttribute('href','#app');
