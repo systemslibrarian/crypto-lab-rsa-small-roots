@@ -2,13 +2,14 @@ import './style.css';
 import { allowlistChallenge,derive,verifyCandidate,type Challenge,type Parameters,type AttackResult } from './attacks/public';
 import { bitLength,integerRoot,powMod } from './math/integer';
 import { evaluate } from './math/polynomial';
-import { verifyWiener,wienerBoundary,type WienerResult,type WienerRow } from './wiener/attack';
+import { wienerBoundary,type WienerResult,type WienerRow } from './wiener/attack';
+import { validateWienerResult,validateWienerReveal,type WienerReveal } from './wiener/verify';
 const el=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id) as T;
 const escape=(s:unknown)=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 const exact=(v:bigint,id='')=>`<code ${id?`id="${id}"`:''} class="exact">${v}</code>`;
 const json=(value:unknown)=>JSON.stringify(value,(_,v)=>typeof v==='bigint'?v.toString():v,2);
 type Scenario='message'|'factor'|'wiener';
-interface WienerReveal {d:bigint;p:bigint;q:bigint;dBits:number;boundary:bigint;insideGuarantee:boolean;belowBonehDurfee:boolean;verification:{message:bigint;ciphertext:bigint;decrypted:bigint;roundTrip:boolean};}
+
 let scenario:Scenario='message',runId=0,challenge:Challenge|null=null,result:AttackResult|WienerResult|null=null,roundTrip:boolean|null=null,wienerReveal:WienerReveal|null=null;
 let simulator=new Worker(new URL('./workers/simulator.worker.ts',import.meta.url),{type:'module'});
 let attackWorker:Worker|null=null,timer:ReturnType<typeof setTimeout>|null=null,generationTimer:ReturnType<typeof setTimeout>|null=null,selectedRow=0,traceIndex=0;
@@ -43,19 +44,23 @@ function buildChallenge(newKey=false) {
   el('prediction').textContent='Preparing the public challenge';el('prediction').dataset.value='pending';
   el('prediction-note').textContent='The exact bound will be recomputed for the new public inputs.';
   el('challenge-content').innerHTML='<p>Preparing a public challenge. Previous public inputs have been retired.</p>';
+  if(newKey||scenario==='wiener'){simulator.terminate();simulator=new Worker(new URL('./workers/simulator.worker.ts',import.meta.url),{type:'module'});bindSimulator();}
   if(newKey||scenario==='wiener')setStatus(`Generating a fresh ${field<HTMLSelectElement>('key-size').value}-bit demonstration key…`,'generating');
   if(scenario==='wiener')simulator.postMessage({runId,type:'wiener',scenario,dBits:Number(field<HTMLInputElement>('width').value),bits:Number(field<HTMLSelectElement>('key-size').value)});
   else simulator.postMessage({runId,type:newKey?'new':'example',scenario,suffixBits:Number(field<HTMLInputElement>('width').value),prefix:field<HTMLInputElement>('prefix').value,bits:Number(field<HTMLSelectElement>('key-size').value)});
   if(generationTimer)clearTimeout(generationTimer);
-  generationTimer=setTimeout(()=>{simulator.terminate();challenge=null;setStatus('Key generation reached its 30-second budget. Reset the lab to try again.','resource-limit');},30000);
+  const generationId=runId;generationTimer=setTimeout(()=>{if(generationId!==runId)return;simulator.terminate();challenge=null;setStatus('Key generation reached its 30-second budget. Reset the lab to try again.','resource-limit');},30000);
 }
 function bindSimulator() {
+  simulator.onerror=()=>{if(generationTimer)clearTimeout(generationTimer);generationTimer=null;integrityFailure('The simulator worker failed. Generate a new key to retry.');};
   simulator.onmessage=event=>{
     const data=event.data;if(data.runId!==runId)return;
     if(data.type==='oracle-check') {
       if(scenario==='wiener') {
         if(!data.matches){integrityFailure('The simulator cross-check disagreed with the recovered private exponent.');return;}
-        if(data.reveal)drawWienerReveal(data.reveal);
+        if(timer)clearTimeout(timer);timer=null;
+        if(!data.reveal){integrityFailure('The simulator omitted its post-run evidence.');return;}
+        drawWienerReveal(data.reveal);
       } else if(!data.matches && result && result.recovered!==null) integrityFailure('The simulator cross-check disagreed with public recovery.');
       return;
     }
@@ -89,8 +94,8 @@ function log2Fixed(value:bigint):string {
 function drawWienerPublic(c:Extract<Challenge,{scenario:'wiener'}>) {
   const boundary=wienerBoundary(c.N),lemmaBound=2*bitLength(c.N);illustration();el('key-label').textContent=`${bitLength(c.N)}-bit modulus`;document.querySelector('.pipeline li')?.classList.add('complete');
   el('known-display').textContent='e / N';el('prediction').textContent='Unknown until d is recovered or revealed';el('prediction').dataset.value='pending';
-  el('prediction-note').textContent=`From N alone, Wiener's guarantee covers d ≤ D where D is the largest integer satisfying 81·D⁴ < N: about 2^${log2Fixed(boundary)}.`;
-  el('challenge-content').innerHTML=`<p>Attacker payload: N and e only. The simulator keeps d, p, and q until the post-run reveal.</p><dl><dt>Public modulus N</dt><dd>${exact(c.N,'public-N')}</dd><dt>Public exponent e</dt><dd>${exact(c.e,'public-e')}</dd><dt>Exact guarantee boundary D</dt><dd>${exact(boundary,'wiener-boundary')}</dd><dt>Displayed log₂(D)</dt><dd id="wiener-boundary-bits">${log2Fixed(boundary)}</dd><dt>Theorem inequality</dt><dd>81·d⁴ &lt; N</dd><dt>Lemma 16.6 row bound</dt><dd id="wiener-lemma-bound">${lemmaBound}</dd></dl><p>The continued fraction of e/N is generated by exact BigInt Euclid. No private value decides which row passes.</p>`;
+  el('prediction-note').textContent=`For same-bit-length RSA primes, Wiener's guarantee covers d ≤ D where D is the largest integer satisfying 81·D⁴ < N: about 2^${log2Fixed(boundary)}.`;
+  el('challenge-content').innerHTML=`<p>Attacker payload: N and e only. The simulator keeps d, p, and q until the post-run reveal.</p><dl><dt>Public modulus N</dt><dd>${exact(c.N,'public-N')}</dd><dt>Public exponent e</dt><dd>${exact(c.e,'public-e')}</dd><dt>Exact guarantee boundary D</dt><dd>${exact(boundary,'wiener-boundary')}</dd><dt>Displayed log₂(D)</dt><dd id="wiener-boundary-bits">${log2Fixed(boundary)}</dd><dt>Theorem assumptions and inequality</dt><dd>Distinct same-bit-length primes; 81·d⁴ &lt; N</dd><dt>Lemma 16.6 row bound</dt><dd id="wiener-lemma-bound">${lemmaBound}</dd></dl><p>The continued fraction of e/N is generated by exact BigInt Euclid. No private value decides which row passes.</p>`;
   el('shortcut').innerHTML='<span>Wiener scenario</span><br>e/N ≈ k/d<br><span>Each convergent kᵢ/dᵢ proposes a denominator. Exact divisibility, square-discriminant, parity, and p·q = N checks decide the row.</span>';
 }
 function chooseScenario(next:Scenario) {
@@ -191,10 +196,14 @@ function drawResult() {
   field<HTMLSelectElement>('row-select').onchange=()=>{selectedRow=Number(field<HTMLSelectElement>('row-select').value);drawRow();};drawRow();
 }
 function drawWienerResult(r:WienerResult,c:Extract<Challenge,{scenario:'wiener'}>) {
-  if(r.status==='verified-recovery') {
-    if(!r.recovered||!verifyWiener(c,r.recovered.d,r.recovered.p,r.recovered.q,r.recovered.checks.message).valid){integrityFailure('The Wiener candidate failed independent public verification.');return;}
+  if(!validateWienerResult(c,r)){integrityFailure('The Wiener ladder failed independent public verification.');return;}
+  if(r.searchComplete&&!wienerReveal){
+    setStatus('Checking the completed public ladder against the simulator reveal…','running');
+    el<HTMLButtonElement>('export').disabled=true;
+    simulator.postMessage({runId,type:'check',recovered:r.recovered?.d??null});
+    const checkingId=runId;timer=setTimeout(()=>{if(checkingId===runId)integrityFailure('The simulator did not return its post-run evidence.');},15000);
+    return;
   }
-  if(r.testedCount>r.lemmaBound){integrityFailure('The continued-fraction ladder exceeded its declared bound.');return;}
   const wienerSuccess=r.status==='verified-recovery';
   setStatus(wienerSuccess?`Private exponent recovered from the public key · ${r.testedCount} convergents · ${r.runtimeMs.toFixed(0)} ms`:r.status==='resource-limit'?'Resource limit: continued-fraction search is incomplete.':`No convergent factored N after ${r.testedCount} rows. This is not a safety result.`,r.status);
   document.querySelectorAll('.pipeline li').forEach((node,i)=>node.classList.toggle('complete',r.searchComplete||i<r.testedCount));
@@ -204,15 +213,13 @@ function drawWienerResult(r:WienerResult,c:Extract<Challenge,{scenario:'wiener'}
   el('certificate-note').textContent=wienerSuccess?'All three checks were recomputed from the public key and recovered candidate.':'A completed negative ladder still needs the simulator’s post-run key checks.';
   el<HTMLButtonElement>('export').disabled=!r.searchComplete;
   el('wiener-content').innerHTML=`<p>Exact Euclidean continued fraction of e/N. Tested ${r.testedCount} rows; Lemma 16.6 bound: ${r.lemmaBound}. A grey ✕ names the failed exact condition; the alarm row is the only row that factors N.</p><div class="matrix-scroll" tabindex="0" role="region" aria-label="Complete continued-fraction ladder"><table><caption>Convergents and exact factor reconstruction</caption><thead><tr><th scope="col">i</th><th scope="col">aᵢ</th><th scope="col">kᵢ</th><th scope="col">dᵢ</th><th scope="col">Divides?</th><th scope="col">Δ square?</th><th scope="col">p·q=N?</th><th scope="col">Result</th></tr></thead><tbody>${r.rows.map(row=>`<tr class="${row.product?'wiener-row-win':'wiener-row-fail'}" title="${escape(row.reason)}"><td>${row.i}</td><td>${row.a}</td><td>${row.k}</td><td>${row.d}</td><td>${row.divides?'yes':'no'}</td><td>${row.square?'yes':'no'}</td><td>${row.product?'yes':'no'}</td><td>${escape(row.reason)}</td></tr>`).join('')}</tbody></table></div>`;
-  if(r.searchComplete)simulator.postMessage({runId,type:'check',recovered:r.recovered?.d??null});
+
 }
 function drawWienerReveal(reveal:WienerReveal) {
   if(!result||result.scenario!=='wiener'||!challenge||challenge.scenario!=='wiener')return;
-  const phi=(reveal.p-1n)*(reveal.q-1n),publicProduct=reveal.p*reveal.q===challenge.N,publicInverse=challenge.e*reveal.d%phi===1n,publicRoundTrip=powMod(reveal.verification.ciphertext,reveal.d,challenge.N)===reveal.verification.message&&reveal.verification.decrypted===reveal.verification.message;
-  if(reveal.boundary!==wienerBoundary(challenge.N)||!publicProduct||!publicInverse||!publicRoundTrip){integrityFailure('The simulator reveal failed independent boundary or RSA checks.');return;}
-  if(result.recovered&&result.recovered.d!==reveal.d){integrityFailure('The public recovery and simulator private exponent disagree.');return;}
-  if(!result.recovered&&reveal.insideGuarantee){integrityFailure('A completed Wiener search missed a key inside the theorem guarantee.');return;}
-  wienerReveal=reveal;const recovered=result.recovered!==null;
+  if(!validateWienerReveal(challenge,result,reveal)){integrityFailure('The simulator reveal failed independent boundary or RSA checks.');return;}
+  wienerReveal=reveal;drawWienerResult(result,challenge);
+  const recovered=result.recovered!==null,phi=(reveal.p-1n)*(reveal.q-1n);
   el('prediction').dataset.value=String(reveal.insideGuarantee);el('prediction').textContent=reveal.insideGuarantee?'✓ Inside Wiener’s guarantee: 81·d⁴ < N':'— Outside Wiener’s sufficient guarantee';el('prediction-note').textContent=`Revealed d has ${reveal.dBits} bits; exact D = ${reveal.boundary}. The bound is sufficient, not necessary.`;
   el('certificate').dataset.value='true';el('certificate').textContent='✓ Public key and random-message round trip verified';el('certificate-note').textContent=`p·q = N, e·d ≡ 1 mod φ(N), and (m^e)^d ≡ m for the simulator’s fresh random m.`;
   const revealElement=el('reveal');revealElement.hidden=false;revealElement.dataset.outcome=recovered?'recovered':'not-recovered';el('reveal-eyebrow').textContent=recovered?'ALARM / PRIVATE KEY EXPOSED':'AMBER / METHOD COMPLETED';
@@ -249,7 +256,7 @@ field<HTMLInputElement>('prefix').addEventListener('input',()=>{retire('Previous
 field<HTMLInputElement>('width').addEventListener('input',()=>{retire(scenario==='wiener'?'Previous result retired: private-exponent width changed, so a fresh key is required.':'Previous result retired: public challenge changed. Width changes create related challenges.');buildChallenge(scenario==='wiener');});
 let previousPreset=field<HTMLSelectElement>('preset').value;
 field<HTMLSelectElement>('preset').onchange=()=>{if(field<HTMLSelectElement>('preset').value===previousPreset)return;previousPreset=field<HTMLSelectElement>('preset').value;retire('Previous result retired: lattice parameters changed.');drawPublic();el<HTMLButtonElement>('run').disabled=!challenge;};
-field<HTMLSelectElement>('budget').onchange=()=>{retire('Previous result retired: resource budget changed.');el<HTMLButtonElement>('run').disabled=!challenge;};
+field<HTMLSelectElement>('budget').onchange=()=>{retire('Previous result retired: resource budget changed.');if(!challenge)buildChallenge();else el<HTMLButtonElement>('run').disabled=false;};
 field<HTMLSelectElement>('key-size').onchange=()=>{retire('Previous result retired: modulus size changed.');if(scenario==='wiener'){const width=field<HTMLInputElement>('width');width.max=String(Number(field<HTMLSelectElement>('key-size').value)/2);el('width-max').textContent=`${width.max} bits`;if(Number(width.value)>Number(width.max))width.value=width.max;}buildChallenge(true);};
 el('wiener-evidence').onclick=()=>{if(scenario!=='wiener')return;retire('Loading the pinned no-recovery evidence key…');challenge=null;field<HTMLSelectElement>('key-size').value='1024';const width=field<HTMLInputElement>('width');width.max='512';width.value='258';el('width-max').textContent='512 bits';illustration();el<HTMLButtonElement>('run').disabled=true;setStatus('Loading the pinned no-recovery evidence key…','generating');simulator.postMessage({runId,type:'wiener-fixture'});};
 el('reset').onclick=()=>{

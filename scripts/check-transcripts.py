@@ -37,6 +37,8 @@ for filename in sys.argv[1:]:
                 break
         rows = record['rows']
         assert [(int(row['a']), int(row['k']), int(row['d'])) for row in rows] == ladder[:len(rows)]
+        assert len(rows) == len(ladder) == record['testedCount']
+        assert record['searchComplete'] is True
         assert len(rows) <= 2 * N.bit_length() == record['lemmaBound']
         reported = record['recovered']
         if winner is None:

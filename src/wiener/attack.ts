@@ -59,15 +59,26 @@ export function withinWienerGuarantee(N: bigint, d: bigint): boolean {
   return 81n * d ** 4n < N;
 }
 
-export function verifyWiener(c: WienerChallenge, d: bigint, p: bigint, q: bigint, message = 42n): WienerChecks {
+export function verifyWiener(c: WienerChallenge, d: bigint, p: bigint, q: bigint, message = c.N > 44n ? 42n : 2n): WienerChecks {
   const product = p * q === c.N;
   const phi = (p - 1n) * (q - 1n);
   const inverse = p > 1n && q > 1n && mod(c.e * d, phi) === 1n;
-  const sample = c.N > 4n ? mod(message, c.N - 3n) + 2n : 1n;
+  if (message < 2n || message > c.N - 2n) throw Error('Round-trip message must lie in [2, N − 2]');
+  const sample = message;
   const ciphertext = powMod(sample, c.e, c.N);
   const decrypted = powMod(ciphertext, d, c.N);
   const roundTrip = decrypted === sample;
   return { product, inverse, roundTrip, message: sample, ciphertext, decrypted, valid: product && inverse && roundTrip };
+}
+
+function randomMessage(N: bigint): bigint {
+  const bytes = new Uint8Array(Math.ceil(bitLength(N - 4n) / 8));
+  let value: bigint;
+  do {
+    crypto.getRandomValues(bytes);
+    value = bytes.reduce((n, byte) => (n << 8n) | BigInt(byte), 0n);
+  } while (value >= N - 3n);
+  return value + 2n;
 }
 
 function testConvergent(c: WienerChallenge, row: { i: number; a: bigint; k: bigint; d: bigint }): WienerRow {
@@ -109,7 +120,7 @@ export function wienerAttack(
       rows.push(row);
       progress(row);
       if (row.product && row.p !== undefined && row.q !== undefined) {
-        const checks = verifyWiener(c, row.d, row.p, row.q, BigInt(2 + rows.length));
+        const checks = verifyWiener(c, row.d, row.p, row.q, randomMessage(c.N));
         if (checks.valid) {
           return { version: 1, scenario: 'wiener', challenge: c, status: 'verified-recovery', rows, recovered: { d: row.d, p: row.p, q: row.q, checks }, testedCount: rows.length, lemmaBound, searchComplete: true, runtimeMs: performance.now() - started };
         }

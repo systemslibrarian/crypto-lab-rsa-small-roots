@@ -4,6 +4,7 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync,writeFileSync,readdirSync,mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { validateNamedRun,validateUnitRun,assertNormalExit } from './mutation-report.mjs';
 const mutations=[
   {name:'prediction verdict',file:'src/main.ts',anchor:"el('prediction').dataset.value=String(d.bound.satisfied)",replacement:"el('prediction').dataset.value=String(!d.bound.satisfied)",test:'finite sufficient prediction',mode:'browser'},
   {name:'computed-vector verdict',file:'src/main.ts',anchor:"el('certificate').dataset.value=String(cert.satisfied)",replacement:"el('certificate').dataset.value=String(!cert.satisfied)",test:'selected vector certificate',mode:'browser'},
@@ -26,6 +27,8 @@ const mutations=[
   {name:'coefficient replay',file:'src/main.ts',anchor:"after=e.type==='reduce'?before-e.multiplier!*source",replacement:"after=e.type==='reduce'?before+e.multiplier!*source",test:'reduction stepper replays actual',mode:'browser'},
   {name:'integer-root display',file:'src/main.ts',anchor:"exact(evaluate(row.h,result.recovered),'row-evaluation')",replacement:"exact(evaluate(row.h,result.recovered)+1n,'row-evaluation')",test:'selected vector certificate',mode:'browser'},
   {name:'oracle disagreement',file:'src/main.ts',anchor:'if(!data.matches && result && result.recovered!==null)',replacement:'if(data.matches && result && result.recovered!==null)',test:'simulator integrity failure',mode:'browser'},
+  {name:'Wiener reveal metadata',file:'src/wiener/verify.ts',anchor:'reveal.insideGuarantee === inside',replacement:'true',test:'reveal verification rejects false theorem',mode:'unit',unitFile:'src/wiener/verify.test.ts'},
+  {name:'Wiener transcript completeness',file:'src/wiener/verify.ts',anchor:'denominator === 0n',replacement:'true',test:'independent verifier rejects a partial negative',mode:'unit',unitFile:'src/wiener/verify.test.ts'},
   {name:'Wiener convergent divisibility',file:'src/wiener/attack.ts',anchor:'if (numerator % row.k !== 0n)',replacement:'if (numerator % row.d !== 0n)',test:'matches the independently long-divided toy ladder',mode:'unit',unitFile:'src/wiener/wiener.test.ts'},
   {name:'Wiener discriminant square',file:'src/wiener/attack.ts',anchor:'const square = root * root === delta;',replacement:'const square = true;',test:'rejects nonsquare discriminants',mode:'unit',unitFile:'src/wiener/wiener.test.ts'},
   {name:'Wiener factor product',file:'src/wiener/attack.ts',anchor:'const product = p * q === c.N;',replacement:'const product = true;',test:'public verification rejects factors',mode:'unit',unitFile:'src/wiener/wiener.test.ts'},
@@ -34,27 +37,30 @@ const mutations=[
   {name:'Wiener negative claim',file:'src/main.ts',anchor:'el(\'negative-claim\').textContent="Surviving Wiener\'s attack does not make a small private exponent safe."',replacement:"el('negative-claim').textContent=''",test:'Wiener no-recovery evidence',mode:'browser'},
   {name:'Wiener public payload',file:'src/attacks/public.ts',anchor:"const wienerPublic={scenario:'wiener' as const,N:c.N,e:c.e};",replacement:"const wienerPublic={scenario:'wiener' as const,N:c.N,e:c.e,dPriv:1n};",test:'Wiener attack worker receives only',mode:'browser'}
 ];
-function execute(args){const r=spawnSync('npx',args,{encoding:'utf8',env:{...process.env,CI:'1'},timeout:300000,maxBuffer:8*1024*1024});return {code:r.status,output:(r.stdout??'')+(r.stderr??'')};}
-function build(){const r=spawnSync('npm',['run','build'],{encoding:'utf8',timeout:60000});if(r.status!==0)throw Error(`Build failed: ${r.stdout}\n${r.stderr}`);}
+function execute(command,args){return spawnSync(command,args,{encoding:'utf8',env:{...process.env,CI:'1'},timeout:300000,maxBuffer:16*1024*1024});}
+function build(){const r=execute('npm',['run','build']);assertNormalExit(r,'build');if(r.status!==0)throw Error(`Build failed: ${r.stdout}\n${r.stderr}`);}
 function hash(){const h=createHash('sha256');for(const file of readdirSync('dist/assets').filter(v=>/\.(js|css)$/.test(v)).sort())h.update(file).update(readFileSync(`dist/assets/${file}`));return h.digest('hex');}
-function check(m){return execute(m.mode==='browser'?['playwright','test','--grep',m.test,'--retries=0']:['vitest','run',m.unitFile??'src/math/engine.test.ts','-t',m.test]);}
+function check(m,shouldPass){
+  const report='.qa-artifacts/mutations/report.json';
+  const result=m.mode==='browser'?execute('npx',['playwright','test',m.test.startsWith('WCAG')?'e2e/a11y.spec.ts':'e2e/claims.spec.ts','--grep',m.test,'--retries=0','--reporter=json']):execute('npx',['vitest','run',m.unitFile??'src/math/engine.test.ts','-t',m.test,'--reporter=json',`--outputFile=${report}`]);
+  if(m.mode==='browser')validateNamedRun(result,m.test,shouldPass,m.test.startsWith('WCAG')?'a11y.spec.ts':'claims.spec.ts');
+  else {assertNormalExit(result,m.test);validateUnitRun({...result,stdout:readFileSync(report,'utf8')},m.test,m.unitFile??'src/math/engine.test.ts',shouldPass);}
+  return result;
+}
 const selected=process.argv[2]?mutations.filter(m=>m.name===process.argv[2]):mutations;
-if(!selected.length)throw Error('Unknown mutation');const records=[];mkdirSync('.qa-artifacts/mutations',{recursive:true});
+if(!selected.length)throw Error('Unknown mutation');const dirty=execute('git',['status','--porcelain']);assertNormalExit(dirty,'git status');if(dirty.status!==0||dirty.stdout.trim())throw Error('Commit source changes before replaying mutations');const records=[];mkdirSync('.qa-artifacts/mutations',{recursive:true});
 const observationsPath=process.argv[2]?`.qa-artifacts/mutations/observed-${process.argv[2].replaceAll(' ','-')}.json`:'.qa-artifacts/mutations/observed.json';
 for(const m of selected){
   const source=readFileSync(m.file,'utf8');if(source.split(m.anchor).length!==2)throw Error(`${m.name}: anchor must occur exactly once`);
-  build();const baselineHash=hash(),baseline=check(m);if(baseline.code!==0)throw Error(`${m.name}: baseline did not pass\n${baseline.output}`);
+  build();const baselineHash=hash(),baseline=check(m,true);
   let record;
   try{
     const changed=source.replace(m.anchor,m.replacement);if(changed===source)throw Error('Empty mutation');writeFileSync(m.file,changed);build();const mutatedHash=hash();
-    if(mutatedHash===baselineHash)throw Error('Built bundle hash did not move');const observed=check(m);
-    if(observed.code===0)throw Error(`Mutation survived: ${m.name}`);
-    if(/Process from config.webServer|ERR_CONNECTION_REFUSED|error TS\d|Cannot find module|No tests found/.test(observed.output))throw Error(`Not a mathematical / claim kill: ${observed.output}`);
-    if(!/AssertionError|expect\(|Expected:|toBeVisible|toHaveAttribute|toHaveText/.test(observed.output))throw Error(`Failure did not name a tested finding: ${observed.output}`);
-    writeFileSync(`.qa-artifacts/mutations/${m.name.replaceAll(' ','-')}.log`,observed.output);
+    if(mutatedHash===baselineHash)throw Error('Built bundle hash did not move');const observed=check(m,false);
+    writeFileSync(`.qa-artifacts/mutations/${m.name.replaceAll(' ','-')}.log`,observed.stdout+observed.stderr);
     record={name:m.name,file:m.file,anchor:m.anchor,replacement:m.replacement,test:m.test,mode:m.mode,baselinePassed:true,sourceChanged:true,buildPassed:true,baselineHash,mutatedHash,namedTestFailed:true};
   }finally{writeFileSync(m.file,source);build();if(hash()!==baselineHash)throw Error(`${m.name}: restored bundle differs`);}
-  const restored=check(m);if(restored.code!==0)throw Error(`${m.name}: restored control is not green\n${restored.output}`);
+  check(m,true);
   records.push({...record,restoredPassed:true});writeFileSync(observationsPath,JSON.stringify(records,null,2));console.log(`KILLED and restored: ${m.name}`);
 }
 console.log(`${records.length} of ${selected.length} concrete mutations killed, with passing controls.`);

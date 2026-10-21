@@ -173,3 +173,24 @@ for(const worker of ['attack','simulator'])test(`${worker} integrity failure wit
   await expect(page.locator('#reveal')).toBeHidden();await expect(page.locator('#export')).toBeDisabled();await expect(page.locator('#certificate')).toHaveAttribute('data-value','pending');
   await expect(page.locator('#status')).toContainText(worker==='attack'?'failed independent public verification':'simulator cross-check disagreed');
 });
+for(const corruption of ['labels','encryption','ladder','missing reveal'])test(`Wiener ${corruption} corruption withdraws the verdict and export`,async({page})=>{
+  await page.addInitScript((corruption)=>{
+    const Real=window.Worker;
+    window.Worker=class extends Real {constructor(url:string|URL,options?:WorkerOptions){super(url,options);this.addEventListener('message',event=>{
+      const data=event.data;
+      if(data.type==='result'&&data.result.scenario==='wiener'&&corruption==='ladder'){data.result.rows=[];data.result.testedCount=0;}
+      if(data.type==='oracle-check'&&data.reveal){
+        if(corruption==='labels')data.reveal.insideGuarantee=!data.reveal.insideGuarantee;
+        if(corruption==='encryption')data.reveal.verification.ciphertext+=1n;
+        if(corruption==='missing reveal')delete data.reveal;
+      }
+    });}};
+  },corruption);
+  await boot(page);await chooseWiener(page);await run(page);
+  await expect(page.locator('#app')).toHaveAttribute('data-status','integrity-error');
+  await expect(page.locator('#reveal')).toBeHidden();await expect(page.locator('#export')).toBeDisabled();await expect(page.locator('#recovery')).toHaveAttribute('data-value','false');
+});
+test('changing the budget during Wiener key generation leaves a usable challenge',async({page})=>{
+  await boot(page);await page.locator('#wiener-tab').click();await page.locator('#budget').selectOption('60000');
+  await expect(page.locator('#run')).toBeEnabled({timeout:30000});await run(page);await expect(page.locator('#reveal')).toBeVisible();
+});

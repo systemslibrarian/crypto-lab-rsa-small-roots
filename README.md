@@ -121,3 +121,17 @@ The desktop and 320px viewport runs used headless Chromium 156.0.8078.4 on macOS
 *One of the browser demos in the [Crypto Lab](https://crypto-lab.systemslibrarian.dev/) suite.*
 
 *"So whether you eat or drink or whatever you do, do it all for the glory of God." — 1 Corinthians 10:31*
+
+### Wiener verification correction
+
+The page independently reconstructs every convergent and candidate from the public key,
+checks both directions of each exact-message RSA round trip, and checks revealed theorem
+and bit-length labels before publishing a completed result or enabling export. The Wiener
+sufficient bound assumes distinct, same-bit-length RSA primes. The attacker uses a fresh
+WebCrypto random message for its public recovery check. Changing the budget during key
+preparation starts a current challenge rather than stranding the generation request.
+
+The independent Python checker requires a complete recorded ladder and matching row counts.
+Source mutations are replayed in the deployment gate; only the named assertion can kill a
+mutation, with passing baseline and restored controls. Browser coverage includes corrupted
+Wiener ladders, theorem metadata, encryption samples, and missing reveal evidence.
