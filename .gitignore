@@ -10,5 +10,6 @@ CRYPTO-LAB-TEMPLATE*.md
 BRIEF-rsa-small-roots-revised.md
 *.sage.py
 unit-tests.json
+public/deployment.json
 
 .vitest/

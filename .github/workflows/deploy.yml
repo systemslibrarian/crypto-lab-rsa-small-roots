@@ -1,16 +1,5 @@
 name: Deploy to GitHub Pages
 
-# One workflow, three triggers, and each one is load-bearing:
-#   push          - ship main.
-#   pull_request  - the gate has to judge PRs too, or Dependabot opens bumps
-#                   with no CI signal on any of them.
-#   workflow_dispatch - a merge performed with GITHUB_TOKEN raises no push
-#                   event (GitHub suppresses them so workflows cannot
-#                   retrigger themselves), so an auto-merged bump would land on
-#                   main and the live site would keep serving the previous
-#                   build with no red run anywhere to say so. The auto-merge
-#                   job dispatches this workflow explicitly; a dispatch through
-#                   the API is not suppressed.
 on:
   push:
     branches: [main]
@@ -20,12 +9,9 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  # NOT a bare `pages`: with cancel-in-progress, a PR run would cancel a live
-  # main deploy.
+  # A PR run must never cancel a live main deployment.
   group: pages-${{ github.ref }}
   cancel-in-progress: true
 
@@ -33,58 +19,94 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      pages: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
 
-      # The WHOLE suite gates the deploy, not just the a11y half. A 2026-08-14
-      # sweep found 29 repos running `test:a11y` alone, so their cryptographic
-      # suites never blocked a publish.
+      - name: Install dependencies exactly from the lockfile
+        run: npm ci
+
+      - name: Stamp the artifact with its exact source revision
+        run: |
+          mkdir -p public
+          printf '{"source_sha":"%s","repository":"%s"}\n' "$GITHUB_SHA" "$GITHUB_REPOSITORY" > public/deployment.json
+
       - name: Unit and known-answer tests (Vitest)
         run: |
           set -o pipefail
           npm test -- --reporter=default --reporter=json --outputFile=unit-tests.json
           node -e "const r = require('./unit-tests.json'); if (r.success !== true || !Number.isSafeInteger(r.numTotalTests) || r.numTotalTests < 1 || r.numPassedTests !== r.numTotalTests || r.numFailedTests !== 0) { throw Error('The unit suite must contain tests and every test must pass'); } console.log(r.numPassedTests + ' passing unit tests verified from the JSON report');"
 
-      # NEVER --with-deps. That apt step wedged 547 CI runs across this fleet.
+      # ubuntu-latest already supplies Chromium's shared libraries. Installing
+      # them again with apt can wedge fleet jobs, so do not use --with-deps.
       - name: Install Playwright browser
         run: npx playwright install chromium
 
-      - name: Accessibility gate (axe-core, WCAG 2.1 A/AA)
-        run: npm run test:a11y
+      - name: Production browser gate (accessibility and truth claims)
+        run: npm run test:browser
 
       - name: Replay source mutations with named assertions and restored controls
         run: npm run test:mutations
 
-      - uses: actions/configure-pages@v6
-      - uses: actions/upload-pages-artifact@v5
+      - name: Configure Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
+
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: dist
 
   deploy:
     needs: build
-    # NOT `== 'push'`. That would also skip workflow_dispatch, which is the one
-    # trigger the post-auto-merge deploy depends on: the dispatched run would
-    # build, pass the gate, and skip this job, so the site would still never
-    # update.
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - id: deployment
-        uses: actions/deploy-pages@v5
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
 
-  # Dependabot only. `needs: build` is the whole safety argument -- a bump can
-  # merge itself only once this lab's entire PR gate went green, so the gate
-  # decides rather than the version number. A major that actually breaks the
-  # lab fails the gate and the PR stays open for a human.
+      - name: Verify served Pages bytes match the deployed revision
+        env:
+          LIVE_URL: https://systemslibrarian.github.io/crypto-lab-rsa-small-roots/
+        run: |
+          set -eu
+          for attempt in $(seq 1 18); do
+            result=$(curl -fsSL --connect-timeout 8 --max-time 15 -H 'Cache-Control: no-cache' "${LIVE_URL}deployment.json?sha=${GITHUB_SHA}" 2>/dev/null || true)
+            if node -e 'try { const p=JSON.parse(process.argv[1]);process.exit(p.source_sha===process.argv[2]&&p.repository===process.argv[3]?0:1) } catch { process.exit(1) }' "$result" "$GITHUB_SHA" "$GITHUB_REPOSITORY"; then
+              html=$(curl -fsSL --connect-timeout 8 --max-time 15 -H 'Cache-Control: no-cache' "${LIVE_URL}?sha=${GITHUB_SHA}" 2>/dev/null || true)
+              if printf '%s' "$html" | grep -Fq 'id="main-content"'; then
+                echo "Verified live HTML and source revision $GITHUB_SHA at $LIVE_URL"
+                exit 0
+              fi
+            fi
+            sleep 5
+          done
+          echo "::error::Live Pages failed source-SHA/HTML verification"
+          exit 1
+
+  # Dependabot only. The complete build gate decides whether a bump is safe;
+  # this job then merges and explicitly dispatches the main deployment.
   dependabot-auto-merge:
     needs: build
     if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
@@ -93,20 +115,11 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      # actions: write is required by the deploy dispatch below. Without it
-      # `gh workflow run` returns HTTP 403 "Resource not accessible by
-      # integration", the merged bump never deploys, and a `|| echo` fallback
-      # hides it.
       actions: write
     steps:
-      - id: meta
-        uses: dependabot/fetch-metadata@v3
-
       - name: Merge any bump whose gate went green
-        # Retry: a sibling PR merging first moves main underneath us and GitHub
-        # rejects with "Base branch was modified". That is benign, so try again
-        # rather than failing the run over a race.
         run: |
+          set -eu
           merged=""
           for attempt in 1 2 3; do
             if gh pr merge --squash --delete-branch "$PR_URL"; then
@@ -117,15 +130,9 @@ jobs:
             sleep 15
           done
           if [ -z "$merged" ]; then
-            echo "::warning::gate passed but the merge did not land after 3 attempts;"
-            echo "::warning::leaving this PR open - Dependabot will rebase and retry."
-            exit 0
+            echo "::error::gate passed but the merge did not land after 3 attempts; the bump is unmerged and no deploy was dispatched"
+            exit 1
           fi
-          # A merge made with GITHUB_TOKEN raises no push event -- GitHub suppresses
-          # them so workflows cannot retrigger themselves -- so deploy would never run
-          # and the site would keep serving the previous build. Ask for it explicitly;
-          # a workflow_dispatch through the API is not suppressed. The dispatched run
-          # is the same gate-then-deploy pipeline, so a bad merge still ships nothing.
           gh workflow run deploy.yml --repo "$GITHUB_REPOSITORY" --ref main
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}

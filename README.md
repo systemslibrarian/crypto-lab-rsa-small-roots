@@ -93,11 +93,11 @@ The source overlap check, inspected commit SHAs, integration handoff, and verifi
 ```sh
 npm test
 npx playwright install chromium
-npm run test:a11y
+npm run test:browser
 npm run test:mutations
 ```
 
-The local suites pass **55 unit/fixture tests** and **18 browser tests**, including zero accessibility violations in the driven desktop and 320px states. `npm test` builds first, then runs Vitest. Browser tests exercise the production build on the dedicated strict port 4218. In addition to the lattice claims, they independently recompute Wiener’s strict integer boundary, p·q, the inverse relation, a random-message round trip, the public-only payload, result retirement, and the pinned negative claim. They exercise invalidation, cancellation, reset, export, keyboard access, 320px reflow, and injected integrity failures that must withdraw success and disable export. The WCAG gate uses axe plus painted text and per-side control contrast oracles adapted from Schnorr Forge under MIT, with no exemptions.
+The local suites pass **63 unit/fixture tests** and **23 browser tests**, including zero accessibility violations in the driven desktop and 320px states. `npm test` builds first, then runs Vitest. `npm run test:browser` runs the complete accessibility and claims gate; `test:a11y` and `test:claims` run those portions independently. Browser tests exercise the production build on the dedicated strict port 4218. In addition to the lattice claims, they independently recompute Wiener’s strict integer boundary, p·q, the inverse relation, a random-message round trip, the public-only payload, result retirement, and the pinned negative claim. They exercise invalidation, cancellation, reset, export, keyboard access, 320px reflow, and injected integrity failures that must withdraw success and disable export. The WCAG gate uses axe plus painted text and per-side control contrast oracles adapted from Schnorr Forge under MIT, with no exemptions.
 
 Published known-answer control: [SageMath’s root-4 example](https://doc.sagemath.org/html/en/reference/polynomial_rings/sage/rings/polynomial/polynomial_modn_dense_ntl.html), `N = 10001`, `f = x³ + 10x² + 5000x − 222`; this solver commits `X = 8, m = 2, t = 2`. It tests actual recovery through LLL and Sturm search.
 
@@ -110,7 +110,7 @@ sage scripts/cross-check.sage
 
 The Python transcript checker takes `.qa-artifacts/math/*.json` except `observations.json`. The verified Sage 10.8 container digest is `sha256:fb96c7fb10d672f3be0d088399db3aeac52650416d1bb71f74f26429ea35778f` from `sagemath/sagemath:10.8`; the reference runs use no network and a read-only project mount.
 
-The concrete mutation script caught **28 of 28 compiling faults**, including seven Wiener-specific mutations, with passing baseline controls, nonempty source changes, changed bundle hashes, named failing tests, surgical restoration, matching restored hashes, and restored green tests. It records observations under `.qa-artifacts/mutations/`; unperformed runs and compile failures are not counted as kills.
+The concrete mutation script caught **30 of 30 compiling faults**, including nine Wiener-specific mutations, with passing baseline controls, nonempty source changes, changed bundle hashes, named failing tests, surgical restoration, matching restored hashes, and restored green tests. It records observations under `.qa-artifacts/mutations/`; unperformed runs and compile failures are not counted as kills.
 
 ## Performance
 

@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "npm run test:maintenance && tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "npm run build && vitest run",
-    "test:a11y": "playwright test",
+    "test:browser": "playwright test",
+    "test:a11y": "playwright test e2e/a11y.spec.ts",
+    "test:claims": "playwright test e2e/claims.spec.ts",
+    "test:maintenance": "node --test tests/maintenance-controls.node.mjs",
     "test:mutations": "node scripts/mutations.mjs"
   },
   "devDependencies": {
