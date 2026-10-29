@@ -64,7 +64,12 @@ test('a deployment carries and verifies exact source provenance', () => {
   assert.match(job('deploy'), /deployment\.json\?sha=\$\{GITHUB_SHA\}/);
   assert.match(job('deploy'), /p\.source_sha===process\.argv\[2\]/);
   assert.match(job('deploy'), /p\.repository===process\.argv\[3\]/);
-  assert.match(job('deploy'), /grep -Fq 'id="main-content"'/);
+  // The landmark the page actually ships. Both this line and the workflow said
+  // `id="main-content"`, an id index.html has never contained -- it renders
+  // `<main id="app" tabindex="-1">` -- so the deploy published correctly and
+  // then failed its own verification every time. The assertion is pinned to
+  // the same string the workflow greps for, so the two cannot drift apart.
+  assert.match(job('deploy'), /grep -Fq '<main id="app"'/);
 });
 
 test('every job has an explicit timeout', () => {
