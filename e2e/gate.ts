@@ -3,6 +3,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect,type Page } from '@playwright/test';
 import { auditContrast,formatContrastFailures } from './contrast';
+import { auditControlNames, formatControlNameFailures } from './control-names';
 import { auditNonText,formatNonTextFailures } from './nontext';
 export async function boot(page:Page) {
   await page.emulateMedia({reducedMotion:'reduce'});await page.goto('.');
@@ -27,6 +28,10 @@ export async function scan(page:Page,state:string) {
   // Other unresolved axe nodes must be reviewed, not silently dropped.
   expect(wcag.incomplete.filter(v=>v.id!=='color-contrast'),`${state}: unresolved axe checks`).toEqual([]);
   expect(formatContrastFailures(await auditContrast(page)),`${state}: text contrast`).toEqual([]);
+  // axe's `label` rule accepts a bare `placeholder` as an accessible name, so a
+  // deleted label can leave this gate green. See `control-names.ts`.
+  expect(formatControlNameFailures(await auditControlNames(page)),`${state}: form controls named only by placeholder/title`).toEqual([]);
+
   expect(formatNonTextFailures(await auditNonText(page)),`${state}: control and generated-content contrast`).toEqual([]);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${state}: page reflow`).toBe(true);
 }
