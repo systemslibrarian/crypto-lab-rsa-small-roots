@@ -5,8 +5,9 @@ import { expect,type Page } from '@playwright/test';
 import { auditContrast,formatContrastFailures } from './contrast';
 import { auditControlNames, formatControlNameFailures } from './control-names';
 import { auditNonText,formatNonTextFailures } from './nontext';
+import { assertThisLab } from './identity';
 export async function boot(page:Page) {
-  await page.emulateMedia({reducedMotion:'reduce'});await page.goto('.');
+  await page.emulateMedia({reducedMotion:'reduce'});await assertThisLab(page, '.');
   await expect(page.locator('#run')).toBeEnabled({timeout:30000});
   await expect(page.locator('main')).toHaveCount(1);await expect(page.locator('h1')).toHaveCount(1);
   await expect(page.locator('[role=banner]')).toHaveCount(1);
