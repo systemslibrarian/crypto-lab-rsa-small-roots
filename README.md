@@ -60,7 +60,7 @@ Limits: ≤1024-bit modulus, ≤12-dimensional lattice, 1–256 unknown bits at 
 
 Out of scope: Håstad implementation, Boneh–Durfee implementation, Blömer–May, arbitrary-exponent Coppersmith attacks, multivariate polynomials, known-LSB factoring, ROCA, BKZ, and an OAEP attack.
 
-**Research note (November 2026):** [Ding et al., ePrint 2026/2985](https://eprint.iacr.asia/2026/2985). The preprint characterizes optimal small-root bounds for a specific family of lattice constructions (standard triangular shifts) applied to modular equations with two unknowns. The lattice exhibits here each solve for one unknown: a message suffix or the missing low bits of a prime. The new result does not change the lab’s sufficient bound or how it verifies a recovered root.
+**Research note (November 2026):** [Ding et al., ePrint 2026/2985](https://opencryptology.org/2026/2985). The preprint characterizes optimal small-root bounds for a specific family of lattice constructions (standard triangular shifts) applied to modular equations with two unknowns. The lattice exhibits here each solve for one unknown: a message suffix or the missing low bits of a prime. The new result does not change the lab’s sufficient bound or how it verifies a recovered root.
 
 ## Real-World Usage
 
