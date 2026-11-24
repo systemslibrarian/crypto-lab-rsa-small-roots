@@ -194,3 +194,21 @@ test('changing the budget during Wiener key generation leaves a usable challenge
   await boot(page);await page.locator('#wiener-tab').click();await page.locator('#budget').selectOption('60000');
   await expect(page.locator('#run')).toBeEnabled({timeout:30000});await run(page);await expect(page.locator('#reveal')).toBeVisible();
 });
+
+test('invalid prefix retires the displayed input and its arithmetic', async ({ page }) => {
+  await page.goto('./');
+  await page.locator('#prefix').fill('é📚');
+  await expect(page.locator('#known-display')).toHaveText('é📚');
+  await expect(page.locator('#challenge-content')).toContainText('0xc3a9f09f939a');
+  await expect(page.locator('#cube-root')).toHaveCount(1);
+
+  await page.locator('#prefix').fill('x'.repeat(80));
+  await expect(page.locator('#prefix')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.locator('#known-display')).toHaveText('—');
+  await expect(page.locator('#cube-root')).toHaveCount(0);
+  await expect(page.locator('#run')).toBeDisabled();
+
+  await page.locator('#prefix').fill('New');
+  await expect(page.locator('#known-display')).toHaveText('New');
+  await expect(page.locator('#cube-root')).toHaveCount(1);
+});

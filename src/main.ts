@@ -40,7 +40,10 @@ function illustration() {
   el('range').textContent=scenario==='wiener'?`2^${width-1} ≤ d < 2^${width}`:`0 ≤ x < 2^${width}`;el('dimension').textContent=scenario==='wiener'?'No lattice':`${n} × ${n}`;
 }
 function buildChallenge(newKey=false) {
-  challenge=null;el<HTMLButtonElement>('run').disabled=true;illustration();
+  challenge=null;roundTrip=null;el<HTMLButtonElement>('run').disabled=true;illustration();
+  el('key-label').textContent='Awaiting a valid challenge';
+  el('known-display').textContent='—';
+  el('shortcut').textContent='A valid public challenge is needed for this example.';
   el('prediction').textContent='Preparing the public challenge';el('prediction').dataset.value='pending';
   el('prediction-note').textContent='The exact bound will be recomputed for the new public inputs.';
   el('challenge-content').innerHTML='<p>Preparing a public challenge. Previous public inputs have been retired.</p>';
